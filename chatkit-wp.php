@@ -24,6 +24,236 @@ class ChatKit_WordPress {
     private $options_cache = null;
     private $widget_loaded = false;
 
+    /**
+     * WPML locale mapping - maps 2-letter codes to full locale codes
+     */
+    private $wpml_locale_map = [
+        'en' => 'en-US',
+        'it' => 'it-IT',
+        'de' => 'de-DE',
+        'fr' => 'fr-FR',
+        'es' => 'es-ES',
+        'pt' => 'pt-PT',
+        'nl' => 'nl-NL',
+        'pl' => 'pl-PL',
+        'ru' => 'ru-RU',
+        'ja' => 'ja-JP',
+        'zh' => 'zh-CN',
+        'ko' => 'ko-KR',
+        'ar' => 'ar-SA',
+        'he' => 'he-IL',
+        'tr' => 'tr-TR',
+        'sv' => 'sv-SE',
+        'da' => 'da-DK',
+        'fi' => 'fi-FI',
+        'no' => 'nb-NO',
+        'cs' => 'cs-CZ',
+        'el' => 'el-GR',
+        'hu' => 'hu-HU',
+        'ro' => 'ro-RO',
+        'sk' => 'sk-SK',
+        'uk' => 'uk-UA',
+        'vi' => 'vi-VN',
+        'th' => 'th-TH',
+        'id' => 'id-ID',
+        'ms' => 'ms-MY',
+        'hi' => 'hi-IN',
+        'bn' => 'bn-BD',
+        'bg' => 'bg-BG',
+        'hr' => 'hr-HR',
+        'sl' => 'sl-SI',
+        'sr' => 'sr-RS',
+        'lt' => 'lt-LT',
+        'lv' => 'lv-LV',
+        'et' => 'et-EE',
+    ];
+
+    /**
+     * List of translatable option keys for WPML
+     * These options will be stored per-language when WPML is active
+     */
+    private $translatable_options = [
+        'chatkit_button_text',
+        'chatkit_close_text',
+        'chatkit_greeting_text',
+        'chatkit_placeholder_text',
+        'chatkit_header_title_text',
+        'chatkit_disclaimer_text',
+        'chatkit_default_prompt_1',
+        'chatkit_default_prompt_1_text',
+        'chatkit_default_prompt_2',
+        'chatkit_default_prompt_2_text',
+        'chatkit_default_prompt_3',
+        'chatkit_default_prompt_3_text',
+        'chatkit_default_prompt_4',
+        'chatkit_default_prompt_4_text',
+        'chatkit_default_prompt_5',
+        'chatkit_default_prompt_5_text',
+    ];
+
+    /**
+     * Get the current language code for option storage
+     * Returns language code (e.g., 'en', 'it', 'de') or empty string if no multilingual plugin
+     */
+    private function get_current_language() {
+        // WPML - use the proper API for both frontend and admin
+        if (defined('ICL_SITEPRESS_VERSION')) {
+            // Check our custom hidden field first (most reliable during form save)
+            if (is_admin() && !empty($_POST['chatkit_save_language'])) {
+                $form_lang = sanitize_text_field($_POST['chatkit_save_language']);
+                if ($form_lang && $form_lang !== 'all') {
+                    return $form_lang;
+                }
+            }
+            
+            // In admin, check for URL parameter (WPML admin language switcher)
+            if (is_admin() && !empty($_GET['lang'])) {
+                $url_lang = sanitize_text_field($_GET['lang']);
+                if ($url_lang && $url_lang !== 'all') {
+                    return $url_lang;
+                }
+            }
+            
+            // Also check POST data (WPML's own field)
+            if (is_admin() && !empty($_POST['icl_post_language'])) {
+                $post_lang = sanitize_text_field($_POST['icl_post_language']);
+                if ($post_lang && $post_lang !== 'all') {
+                    return $post_lang;
+                }
+            }
+            
+            // Try the WPML filter (most reliable for frontend)
+            $lang = apply_filters('wpml_current_language', null);
+            if ($lang && $lang !== 'all') {
+                return $lang;
+            }
+            
+            // Fallback to global sitepress object
+            global $sitepress;
+            if ($sitepress && method_exists($sitepress, 'get_current_language')) {
+                $lang = $sitepress->get_current_language();
+                if ($lang && $lang !== 'all') {
+                    return $lang;
+                }
+            }
+            
+            // Check admin language cookie
+            if (is_admin() && !empty($_COOKIE['_icl_current_admin_language'])) {
+                $cookie_lang = sanitize_text_field($_COOKIE['_icl_current_admin_language']);
+                if ($cookie_lang && $cookie_lang !== 'all') {
+                    return $cookie_lang;
+                }
+            }
+            
+            // Last resort: ICL_LANGUAGE_CODE constant
+            if (defined('ICL_LANGUAGE_CODE') && ICL_LANGUAGE_CODE && ICL_LANGUAGE_CODE !== 'all') {
+                return ICL_LANGUAGE_CODE;
+            }
+        }
+        
+        // Polylang
+        if (function_exists('pll_current_language')) {
+            $lang = pll_current_language('slug');
+            if ($lang) {
+                return $lang;
+            }
+        }
+        
+        return '';
+    }
+
+    /**
+     * Get the default/primary language code
+     */
+    private function get_default_language() {
+        // WPML - use the proper API
+        if (defined('ICL_SITEPRESS_VERSION')) {
+            // Try the WPML filter first
+            $default = apply_filters('wpml_default_language', null);
+            if ($default) {
+                return $default;
+            }
+            
+            // Fallback to global sitepress object
+            global $sitepress;
+            if ($sitepress && method_exists($sitepress, 'get_default_language')) {
+                $default = $sitepress->get_default_language();
+                if ($default) {
+                    return $default;
+                }
+            }
+        }
+        
+        // Polylang
+        if (function_exists('pll_default_language')) {
+            $default = pll_default_language('slug');
+            if ($default) {
+                return $default;
+            }
+        }
+        
+        return '';
+    }
+
+    /**
+     * Get the language-specific option key
+     * Returns the option key with language suffix if not default language
+     */
+    private function get_language_option_key($option_name, $language = null) {
+        if ($language === null) {
+            $language = $this->get_current_language();
+        }
+        
+        $default_lang = $this->get_default_language();
+        
+        // If no multilingual plugin, or this is the default language, use base key
+        if (empty($language) || $language === $default_lang) {
+            return $option_name;
+        }
+        
+        // Return language-specific key
+        return $option_name . '_' . $language;
+    }
+
+    /**
+     * Get all available languages (for admin UI)
+     */
+    public function get_available_languages() {
+        $languages = [];
+        
+        // WPML
+        if (function_exists('icl_get_languages')) {
+            $wpml_languages = icl_get_languages('skip_missing=0');
+            if ($wpml_languages) {
+                foreach ($wpml_languages as $code => $lang) {
+                    $languages[$code] = [
+                        'code' => $code,
+                        'name' => $lang['native_name'],
+                        'flag' => isset($lang['country_flag_url']) ? $lang['country_flag_url'] : '',
+                        'active' => $lang['active'],
+                    ];
+                }
+            }
+        }
+        
+        // Polylang
+        if (empty($languages) && function_exists('pll_languages_list')) {
+            $pll_languages = pll_languages_list(['fields' => 'slug']);
+            if ($pll_languages) {
+                foreach ($pll_languages as $code) {
+                    $languages[$code] = [
+                        'code' => $code,
+                        'name' => $code,
+                        'flag' => '',
+                        'active' => ($code === pll_current_language('slug')),
+                    ];
+                }
+            }
+        }
+        
+        return $languages;
+    }
+
     public static function get_instance() {
         if (null === self::$instance) {
             self::$instance = new self();
@@ -46,6 +276,209 @@ class ChatKit_WordPress {
         } else {
             add_action('wp_footer', [$this, 'conditional_body_attributes'], 1);
         }
+
+        // WPML Integration
+        add_action('init', [$this, 'register_wpml_strings'], 20);
+        add_action('wpml_language_has_switched', [$this, 'clear_options_cache']);
+    }
+
+    /**
+     * Clear the options cache (used when WPML switches language)
+     */
+    public function clear_options_cache() {
+        $this->options_cache = null;
+    }
+
+    /**
+     * Register translatable strings with WPML String Translation (legacy support)
+     * Note: Primary translation is now handled via per-language options
+     */
+    public function register_wpml_strings() {
+        // Only run in admin and when WPML String Translation is active
+        if (!is_admin() || !function_exists('icl_register_string')) {
+            return;
+        }
+
+        // Register base strings for backward compatibility
+        foreach ($this->translatable_options as $option_name) {
+            $value = get_option($option_name, '');
+            if (!empty($value)) {
+                icl_register_string('chatkit-wp', $option_name, $value);
+            }
+        }
+    }
+
+    /**
+     * Get a translated option value (WPML-aware with per-language storage)
+     *
+     * @param string $option_name The option key
+     * @param mixed $default Default value if option doesn't exist
+     * @param bool $for_admin Whether this is for admin display (uses admin language)
+     * @return mixed The translated option value
+     */
+    private function get_translated_option($option_name, $default = '', $for_admin = false) {
+        // Check if this is a translatable option
+        if (!in_array($option_name, $this->translatable_options, true)) {
+            return get_option($option_name, $default);
+        }
+        
+        // Get the language-specific option key
+        $lang_key = $this->get_language_option_key($option_name);
+        
+        // Try to get the language-specific value
+        $value = get_option($lang_key, null);
+        
+        // If no language-specific value, fall back to base option
+        if ($value === null || $value === '') {
+            $value = get_option($option_name, $default);
+        }
+        
+        // Additional fallback: try WPML String Translation for legacy data
+        if (empty($value) && function_exists('apply_filters')) {
+            $base_value = get_option($option_name, $default);
+            if (!empty($base_value)) {
+                $translated = apply_filters('wpml_translate_single_string', $base_value, 'chatkit-wp', $option_name);
+                if ($translated !== $base_value) {
+                    $value = $translated;
+                }
+            }
+        }
+        
+        return $value !== null ? $value : $default;
+    }
+
+    /**
+     * Get option value for admin display (respects admin language switcher)
+     *
+     * @param string $option_name The option key
+     * @param mixed $default Default value if option doesn't exist
+     * @return mixed The option value for current admin language
+     */
+    public function get_admin_option($option_name, $default = '') {
+        // For non-translatable options, just return the value
+        if (!in_array($option_name, $this->translatable_options, true)) {
+            return get_option($option_name, $default);
+        }
+        
+        // Get the language-specific option key
+        $lang_key = $this->get_language_option_key($option_name);
+        
+        // Try to get the language-specific value
+        $value = get_option($lang_key, null);
+        
+        // If no language-specific value and we're on default language, use base option
+        $current_lang = $this->get_current_language();
+        $default_lang = $this->get_default_language();
+        
+        if (($value === null || $value === '') && ($current_lang === $default_lang || empty($current_lang))) {
+            $value = get_option($option_name, $default);
+        }
+        
+        return $value !== null ? $value : $default;
+    }
+
+    /**
+     * Save an option value for the current language
+     *
+     * @param string $option_name The option key
+     * @param mixed $value The value to save
+     */
+    public function save_translated_option($option_name, $value) {
+        // For non-translatable options, just save normally
+        if (!in_array($option_name, $this->translatable_options, true)) {
+            update_option($option_name, $value);
+            return;
+        }
+        
+        $current_lang = $this->get_current_language();
+        $default_lang = $this->get_default_language();
+        
+        // Debug logging if enabled
+        if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
+            error_log(sprintf(
+                'ChatKit WPML Debug - save_translated_option: option=%s, current_lang=%s, default_lang=%s',
+                $option_name,
+                $current_lang ?: 'EMPTY',
+                $default_lang ?: 'EMPTY'
+            ));
+        }
+        
+        // If default language or no multilingual plugin, save to base option
+        if (empty($current_lang) || $current_lang === $default_lang) {
+            update_option($option_name, $value);
+            
+            if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
+                error_log(sprintf('ChatKit WPML Debug - Saved to BASE option: %s', $option_name));
+            }
+        } else {
+            // Save to language-specific option
+            $lang_key = $this->get_language_option_key($option_name, $current_lang);
+            update_option($lang_key, $value);
+            
+            if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
+                error_log(sprintf('ChatKit WPML Debug - Saved to LANGUAGE-SPECIFIC option: %s', $lang_key));
+            }
+        }
+    }
+
+    /**
+     * Get the current locale, with WPML auto-detection
+     *
+     * @return string The locale code (e.g., 'en-US', 'it-IT')
+     */
+    private function get_wpml_locale() {
+        // First check if a manual locale is set
+        $manual_locale = get_option('chatkit_locale', '');
+        if (!empty($manual_locale)) {
+            return $manual_locale;
+        }
+
+        // WPML active language detection
+        if (defined('ICL_LANGUAGE_CODE') && ICL_LANGUAGE_CODE) {
+            $wpml_lang = ICL_LANGUAGE_CODE;
+            
+            // Try to get full locale from WPML
+            if (function_exists('apply_filters')) {
+                $wpml_locale = apply_filters('wpml_current_language', null);
+                if ($wpml_locale && strlen($wpml_locale) > 2) {
+                    // WPML returned a full locale
+                    return str_replace('_', '-', $wpml_locale);
+                }
+            }
+            
+            // Map 2-letter code to full locale
+            if (isset($this->wpml_locale_map[$wpml_lang])) {
+                return $this->wpml_locale_map[$wpml_lang];
+            }
+            
+            // Fallback: construct locale from language code
+            return $wpml_lang . '-' . strtoupper($wpml_lang);
+        }
+
+        // Polylang support
+        if (function_exists('pll_current_language')) {
+            $pll_lang = pll_current_language('slug');
+            if ($pll_lang && isset($this->wpml_locale_map[$pll_lang])) {
+                return $this->wpml_locale_map[$pll_lang];
+            }
+        }
+
+        // Fallback to WordPress locale
+        $wp_locale = get_locale();
+        if ($wp_locale) {
+            return str_replace('_', '-', $wp_locale);
+        }
+
+        return '';
+    }
+
+    /**
+     * Check if WPML is active
+     *
+     * @return bool
+     */
+    private function is_wpml_active() {
+        return defined('ICL_SITEPRESS_VERSION');
     }
     
     public function conditional_body_attributes() {
@@ -163,35 +596,38 @@ class ChatKit_WordPress {
                 'workflow_id' => $this->get_workflow_id(),
                 'accent_color' => get_option('chatkit_accent_color', '#FF4500'),
                 'accent_level' => get_option('chatkit_accent_level', '2'),
-                'button_text' => get_option('chatkit_button_text', __('Chat now', 'chatkit-wp')),
-                'close_text' => get_option('chatkit_close_text', '✕'),
+                // Translatable options - use WPML-aware getter
+                'button_text' => $this->get_translated_option('chatkit_button_text', __('Chat now', 'chatkit-wp')),
+                'close_text' => $this->get_translated_option('chatkit_close_text', '✕'),
                 'theme_mode' => get_option('chatkit_theme_mode', 'dark'),
                 'enable_attachments' => get_option('chatkit_enable_attachments', false),
                 'persistent_sessions' => get_option('chatkit_persistent_sessions', true),
                 'show_everywhere' => get_option('chatkit_show_everywhere', false),
-                'greeting_text' => get_option('chatkit_greeting_text', __('How can I help you today?', 'chatkit-wp')),
-                'placeholder_text' => get_option('chatkit_placeholder_text', __('Send a message...', 'chatkit-wp')),
+                'greeting_text' => $this->get_translated_option('chatkit_greeting_text', __('How can I help you today?', 'chatkit-wp')),
+                'placeholder_text' => $this->get_translated_option('chatkit_placeholder_text', __('Send a message...', 'chatkit-wp')),
                 'button_size' => get_option('chatkit_button_size', 'medium'),
                 'button_position' => get_option('chatkit_button_position', 'bottom-right'),
                 'border_radius' => get_option('chatkit_border_radius', 'round'),
                 'shadow_style' => get_option('chatkit_shadow_style', 'normal'),
                 'density' => get_option('chatkit_density', 'normal'),
-                'locale' => get_option('chatkit_locale', ''),
+                // Locale with WPML auto-detection
+                'locale' => $this->get_wpml_locale(),
                 
-                'default_prompt_1' => get_option('chatkit_default_prompt_1', __('How can I assist you?', 'chatkit-wp')),
-                'default_prompt_1_text' => get_option('chatkit_default_prompt_1_text', __('Hi! How can I assist you today?', 'chatkit-wp')),
+                // Translatable prompts
+                'default_prompt_1' => $this->get_translated_option('chatkit_default_prompt_1', __('How can I assist you?', 'chatkit-wp')),
+                'default_prompt_1_text' => $this->get_translated_option('chatkit_default_prompt_1_text', __('Hi! How can I assist you today?', 'chatkit-wp')),
                 'default_prompt_1_icon' => get_option('chatkit_default_prompt_1_icon', 'circle-question'),
-                'default_prompt_2' => get_option('chatkit_default_prompt_2', ''),
-                'default_prompt_2_text' => get_option('chatkit_default_prompt_2_text', ''),
+                'default_prompt_2' => $this->get_translated_option('chatkit_default_prompt_2', ''),
+                'default_prompt_2_text' => $this->get_translated_option('chatkit_default_prompt_2_text', ''),
                 'default_prompt_2_icon' => get_option('chatkit_default_prompt_2_icon', 'circle-question'),
-                'default_prompt_3' => get_option('chatkit_default_prompt_3', ''),
-                'default_prompt_3_text' => get_option('chatkit_default_prompt_3_text', ''),
+                'default_prompt_3' => $this->get_translated_option('chatkit_default_prompt_3', ''),
+                'default_prompt_3_text' => $this->get_translated_option('chatkit_default_prompt_3_text', ''),
                 'default_prompt_3_icon' => get_option('chatkit_default_prompt_3_icon', 'circle-question'),
-                'default_prompt_4' => get_option('chatkit_default_prompt_4', ''),
-                'default_prompt_4_text' => get_option('chatkit_default_prompt_4_text', ''),
+                'default_prompt_4' => $this->get_translated_option('chatkit_default_prompt_4', ''),
+                'default_prompt_4_text' => $this->get_translated_option('chatkit_default_prompt_4_text', ''),
                 'default_prompt_4_icon' => get_option('chatkit_default_prompt_4_icon', 'circle-question'),
-                'default_prompt_5' => get_option('chatkit_default_prompt_5', ''),
-                'default_prompt_5_text' => get_option('chatkit_default_prompt_5_text', ''),
+                'default_prompt_5' => $this->get_translated_option('chatkit_default_prompt_5', ''),
+                'default_prompt_5_text' => $this->get_translated_option('chatkit_default_prompt_5_text', ''),
                 'default_prompt_5_icon' => get_option('chatkit_default_prompt_5_icon', 'circle-question'),
                 
                 'attachment_max_size' => get_option('chatkit_attachment_max_size', '20'),
@@ -204,12 +640,14 @@ class ChatKit_WordPress {
                 'font_size' => get_option('chatkit_font_size', '16'),
                 'show_header' => get_option('chatkit_show_header', true),
                 'show_history' => get_option('chatkit_show_history', true),
-                'header_title_text' => get_option('chatkit_header_title_text', ''),
+                // Translatable header title
+                'header_title_text' => $this->get_translated_option('chatkit_header_title_text', ''),
                 'header_left_icon' => get_option('chatkit_header_left_icon', ''),
                 'header_left_url' => get_option('chatkit_header_left_url', ''),
                 'header_right_icon' => get_option('chatkit_header_right_icon', ''),
                 'header_right_url' => get_option('chatkit_header_right_url', ''),
-                'disclaimer_text' => get_option('chatkit_disclaimer_text', ''),
+                // Translatable disclaimer
+                'disclaimer_text' => $this->get_translated_option('chatkit_disclaimer_text', ''),
                 'disclaimer_high_contrast' => get_option('chatkit_disclaimer_high_contrast', false),
                 'initial_thread_id' => get_option('chatkit_initial_thread_id', ''),
             ];
@@ -290,14 +728,11 @@ class ChatKit_WordPress {
         if (isset($_POST['chatkit_save_settings'])) {
             check_admin_referer('chatkit_settings_save');
 
-            $text_fields = [
+            // Non-translatable text fields (saved globally)
+            $global_text_fields = [
                 'chatkit_api_key',
                 'chatkit_workflow_id',
-                'chatkit_button_text',
-                'chatkit_close_text',
                 'chatkit_theme_mode',
-                'chatkit_greeting_text',
-                'chatkit_placeholder_text',
                 'chatkit_button_size',
                 'chatkit_button_position',
                 'chatkit_border_radius',
@@ -310,37 +745,52 @@ class ChatKit_WordPress {
                 'chatkit_attachment_max_count',
                 'chatkit_font_family',
                 'chatkit_font_size',
-                'chatkit_header_title_text',
                 'chatkit_header_left_icon',
                 'chatkit_header_left_url',
                 'chatkit_header_right_icon',
                 'chatkit_header_right_url',
                 'chatkit_initial_thread_id',
-                'chatkit_default_prompt_1',
-                'chatkit_default_prompt_1_text',
                 'chatkit_default_prompt_1_icon',
-                'chatkit_default_prompt_2',
-                'chatkit_default_prompt_2_text',
                 'chatkit_default_prompt_2_icon',
-                'chatkit_default_prompt_3',
-                'chatkit_default_prompt_3_text',
                 'chatkit_default_prompt_3_icon',
-                'chatkit_default_prompt_4',
-                'chatkit_default_prompt_4_text',
                 'chatkit_default_prompt_4_icon',
-                'chatkit_default_prompt_5',
-                'chatkit_default_prompt_5_text',
                 'chatkit_default_prompt_5_icon'
             ];
 
-            foreach ($text_fields as $field) {
+            foreach ($global_text_fields as $field) {
                 if (isset($_POST[$field])) {
                     update_option($field, sanitize_text_field($_POST[$field]));
                 }
             }
 
+            // Translatable text fields (saved per-language when WPML is active)
+            $translatable_text_fields = [
+                'chatkit_button_text',
+                'chatkit_close_text',
+                'chatkit_greeting_text',
+                'chatkit_placeholder_text',
+                'chatkit_header_title_text',
+                'chatkit_default_prompt_1',
+                'chatkit_default_prompt_1_text',
+                'chatkit_default_prompt_2',
+                'chatkit_default_prompt_2_text',
+                'chatkit_default_prompt_3',
+                'chatkit_default_prompt_3_text',
+                'chatkit_default_prompt_4',
+                'chatkit_default_prompt_4_text',
+                'chatkit_default_prompt_5',
+                'chatkit_default_prompt_5_text',
+            ];
+
+            foreach ($translatable_text_fields as $field) {
+                if (isset($_POST[$field])) {
+                    $this->save_translated_option($field, sanitize_text_field($_POST[$field]));
+                }
+            }
+
+            // Disclaimer text (translatable, textarea)
             if (isset($_POST['chatkit_disclaimer_text'])) {
-                update_option('chatkit_disclaimer_text', sanitize_textarea_field($_POST['chatkit_disclaimer_text']));
+                $this->save_translated_option('chatkit_disclaimer_text', sanitize_textarea_field($_POST['chatkit_disclaimer_text']));
             }
 
             if (isset($_POST['chatkit_accent_color'])) {
@@ -370,13 +820,108 @@ class ChatKit_WordPress {
 
             $this->options_cache = null;
 
-            echo '<div class="notice notice-success"><p>' . esc_html__('Settings saved successfully!', 'chatkit-wp') . '</p></div>';
+            // Show success message with language info if WPML active
+            $current_lang = $this->get_current_language();
+            $default_lang = $this->get_default_language();
+            
+            if ($this->is_wpml_active() && $current_lang) {
+                $languages = $this->get_available_languages();
+                $lang_name = isset($languages[$current_lang]) ? $languages[$current_lang]['name'] : strtoupper($current_lang);
+                
+                if ($current_lang === $default_lang) {
+                    // Saving to default language (base options)
+                    echo '<div class="notice notice-success"><p>' . sprintf(
+                        esc_html__('Settings saved for %s (default language - base values).', 'chatkit-wp'), 
+                        '<strong>' . esc_html($lang_name) . '</strong>'
+                    ) . '</p></div>';
+                } else {
+                    // Saving to secondary language (language-specific options)
+                    echo '<div class="notice notice-success"><p>' . sprintf(
+                        esc_html__('Settings saved for %s (translation).', 'chatkit-wp'), 
+                        '<strong>' . esc_html($lang_name) . '</strong>'
+                    ) . '</p></div>';
+                }
+            } else {
+                echo '<div class="notice notice-success"><p>' . esc_html__('Settings saved successfully!', 'chatkit-wp') . '</p></div>';
+            }
         }
 
-        $options = $this->get_all_options();
+        // Get options for admin display (respects current admin language)
+        $options = $this->get_admin_options_for_display();
         extract($options);
 
+        // Pass current language info to template
+        $current_language = $this->get_current_language();
+        $default_language = $this->get_default_language();
+        $available_languages = $this->get_available_languages();
+        $is_wpml_active = $this->is_wpml_active();
+
         require_once CHATKIT_WP_PLUGIN_DIR . 'admin/settings-page.php';
+    }
+
+    /**
+     * Get all options for admin display (respects admin language switcher)
+     */
+    private function get_admin_options_for_display() {
+        return [
+            'api_key' => $this->get_api_key(),
+            'workflow_id' => $this->get_workflow_id(),
+            'accent_color' => get_option('chatkit_accent_color', '#FF4500'),
+            'accent_level' => get_option('chatkit_accent_level', '2'),
+            // Translatable options - use admin language
+            'button_text' => $this->get_admin_option('chatkit_button_text', __('Chat now', 'chatkit-wp')),
+            'close_text' => $this->get_admin_option('chatkit_close_text', '✕'),
+            'theme_mode' => get_option('chatkit_theme_mode', 'dark'),
+            'enable_attachments' => get_option('chatkit_enable_attachments', false),
+            'persistent_sessions' => get_option('chatkit_persistent_sessions', true),
+            'show_everywhere' => get_option('chatkit_show_everywhere', false),
+            'greeting_text' => $this->get_admin_option('chatkit_greeting_text', __('How can I help you today?', 'chatkit-wp')),
+            'placeholder_text' => $this->get_admin_option('chatkit_placeholder_text', __('Send a message...', 'chatkit-wp')),
+            'button_size' => get_option('chatkit_button_size', 'medium'),
+            'button_position' => get_option('chatkit_button_position', 'bottom-right'),
+            'border_radius' => get_option('chatkit_border_radius', 'round'),
+            'shadow_style' => get_option('chatkit_shadow_style', 'normal'),
+            'density' => get_option('chatkit_density', 'normal'),
+            'locale' => get_option('chatkit_locale', ''),
+            
+            // Translatable prompts
+            'default_prompt_1' => $this->get_admin_option('chatkit_default_prompt_1', __('How can I assist you?', 'chatkit-wp')),
+            'default_prompt_1_text' => $this->get_admin_option('chatkit_default_prompt_1_text', __('Hi! How can I assist you today?', 'chatkit-wp')),
+            'default_prompt_1_icon' => get_option('chatkit_default_prompt_1_icon', 'circle-question'),
+            'default_prompt_2' => $this->get_admin_option('chatkit_default_prompt_2', ''),
+            'default_prompt_2_text' => $this->get_admin_option('chatkit_default_prompt_2_text', ''),
+            'default_prompt_2_icon' => get_option('chatkit_default_prompt_2_icon', 'circle-question'),
+            'default_prompt_3' => $this->get_admin_option('chatkit_default_prompt_3', ''),
+            'default_prompt_3_text' => $this->get_admin_option('chatkit_default_prompt_3_text', ''),
+            'default_prompt_3_icon' => get_option('chatkit_default_prompt_3_icon', 'circle-question'),
+            'default_prompt_4' => $this->get_admin_option('chatkit_default_prompt_4', ''),
+            'default_prompt_4_text' => $this->get_admin_option('chatkit_default_prompt_4_text', ''),
+            'default_prompt_4_icon' => get_option('chatkit_default_prompt_4_icon', 'circle-question'),
+            'default_prompt_5' => $this->get_admin_option('chatkit_default_prompt_5', ''),
+            'default_prompt_5_text' => $this->get_admin_option('chatkit_default_prompt_5_text', ''),
+            'default_prompt_5_icon' => get_option('chatkit_default_prompt_5_icon', 'circle-question'),
+            
+            'attachment_max_size' => get_option('chatkit_attachment_max_size', '20'),
+            'attachment_max_count' => get_option('chatkit_attachment_max_count', '3'),
+            'enable_model_picker' => get_option('chatkit_enable_model_picker', false),
+            'enable_tools' => get_option('chatkit_enable_tools', false),
+            'enable_entity_tags' => get_option('chatkit_enable_entity_tags', false),
+            'enable_custom_font' => get_option('chatkit_enable_custom_font', false),
+            'font_family' => get_option('chatkit_font_family', ''),
+            'font_size' => get_option('chatkit_font_size', '16'),
+            'show_header' => get_option('chatkit_show_header', true),
+            'show_history' => get_option('chatkit_show_history', true),
+            // Translatable header title
+            'header_title_text' => $this->get_admin_option('chatkit_header_title_text', ''),
+            'header_left_icon' => get_option('chatkit_header_left_icon', ''),
+            'header_left_url' => get_option('chatkit_header_left_url', ''),
+            'header_right_icon' => get_option('chatkit_header_right_icon', ''),
+            'header_right_url' => get_option('chatkit_header_right_url', ''),
+            // Translatable disclaimer
+            'disclaimer_text' => $this->get_admin_option('chatkit_disclaimer_text', ''),
+            'disclaimer_high_contrast' => get_option('chatkit_disclaimer_high_contrast', false),
+            'initial_thread_id' => get_option('chatkit_initial_thread_id', ''),
+        ];
     }
 
     public function register_rest_routes() {
@@ -658,7 +1203,7 @@ class ChatKit_WordPress {
         $this->widget_loaded = true;
         
         $atts = shortcode_atts([
-            'button_text' => get_option('chatkit_button_text', __('Chat now', 'chatkit-wp')),
+            'button_text' => $this->get_translated_option('chatkit_button_text', __('Chat now', 'chatkit-wp')),
             'accent_color' => get_option('chatkit_accent_color', '#FF4500'),
         ], $atts, 'openai_chatkit');
 

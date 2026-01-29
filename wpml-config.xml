@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wpml-config>
+    <admin-texts>
+        <!-- Button and UI Text -->
+        <key name="chatkit_button_text"/>
+        <key name="chatkit_close_text"/>
+        <key name="chatkit_greeting_text"/>
+        <key name="chatkit_placeholder_text"/>
+        
+        <!-- Header -->
+        <key name="chatkit_header_title_text"/>
+        
+        <!-- Disclaimer -->
+        <key name="chatkit_disclaimer_text"/>
+        
+        <!-- Quick Prompt 1 -->
+        <key name="chatkit_default_prompt_1"/>
+        <key name="chatkit_default_prompt_1_text"/>
+        
+        <!-- Quick Prompt 2 -->
+        <key name="chatkit_default_prompt_2"/>
+        <key name="chatkit_default_prompt_2_text"/>
+        
+        <!-- Quick Prompt 3 -->
+        <key name="chatkit_default_prompt_3"/>
+        <key name="chatkit_default_prompt_3_text"/>
+        
+        <!-- Quick Prompt 4 -->
+        <key name="chatkit_default_prompt_4"/>
+        <key name="chatkit_default_prompt_4_text"/>
+        
+        <!-- Quick Prompt 5 -->
+        <key name="chatkit_default_prompt_5"/>
+        <key name="chatkit_default_prompt_5_text"/>
+    </admin-texts>
+</wpml-config>

@@ -1,6 +1,51 @@
 <div class="wrap">
     <h1><?php esc_html_e('ChatKit Settings', 'chatkit-wp'); ?></h1>
 
+    <?php if (isset($is_wpml_active) && $is_wpml_active && !empty($available_languages)): ?>
+    <div class="notice notice-info" style="margin: 20px 0; padding: 15px;">
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <div>
+                <strong style="font-size: 14px;"><?php esc_html_e('Multilingual Mode', 'chatkit-wp'); ?></strong>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <?php esc_html_e('Currently editing:', 'chatkit-wp'); ?>
+                <?php foreach ($available_languages as $lang): ?>
+                    <?php 
+                    $is_current = ($lang['code'] === $current_language);
+                    $is_default = ($lang['code'] === $default_language);
+                    $style = $is_current 
+                        ? 'background: #2271b1; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold;' 
+                        : 'background: #f0f0f1; color: #50575e; padding: 4px 10px; border-radius: 4px; cursor: pointer;';
+                    ?>
+                    <span style="<?php echo esc_attr($style); ?>" <?php if (!$is_current): ?>title="<?php esc_attr_e('Switch to this language using the admin bar', 'chatkit-wp'); ?>"<?php endif; ?>>
+                        <?php if (!empty($lang['flag'])): ?>
+                            <img src="<?php echo esc_url($lang['flag']); ?>" alt="" style="height: 12px; margin-right: 4px; vertical-align: middle;">
+                        <?php endif; ?>
+                        <?php echo esc_html($lang['name']); ?>
+                        <?php if ($is_default): ?>
+                            <small>(<?php esc_html_e('default', 'chatkit-wp'); ?>)</small>
+                        <?php endif; ?>
+                    </span>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <p class="description" style="margin-top: 10px; margin-bottom: 0;">
+            <?php if ($current_language === $default_language): ?>
+                <?php esc_html_e('You are editing the DEFAULT language. These values will be used as fallback for untranslated languages.', 'chatkit-wp'); ?>
+            <?php else: ?>
+                <?php esc_html_e('You are editing a TRANSLATION. Leave fields empty to use the default language value.', 'chatkit-wp'); ?>
+            <?php endif; ?>
+            <br>
+            <?php esc_html_e('Use the WordPress admin bar language switcher to change language.', 'chatkit-wp'); ?>
+        </p>
+        <?php if (empty($current_language)): ?>
+        <p class="description" style="margin-top: 5px; color: #d63638;">
+            <strong><?php esc_html_e('Warning:', 'chatkit-wp'); ?></strong> <?php esc_html_e('Could not detect current language. Make sure WPML admin language switcher is enabled.', 'chatkit-wp'); ?>
+        </p>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
     <div style="background: #fff; padding: 20px; margin: 20px 0; border-left: 4px solid #2271b1;">
         <h3>📖 <?php esc_html_e('How to use this plugin', 'chatkit-wp'); ?></h3>
         <ol>
@@ -15,6 +60,9 @@
 
     <form method="post" action="">
         <?php wp_nonce_field('chatkit_settings_save'); ?>
+        <?php if (isset($current_language) && !empty($current_language)): ?>
+        <input type="hidden" name="chatkit_save_language" value="<?php echo esc_attr($current_language); ?>">
+        <?php endif; ?>
 
         <h2 class="nav-tab-wrapper">
             <a href="#tab-basic" class="nav-tab nav-tab-active"><?php esc_html_e('Basic Settings', 'chatkit-wp'); ?></a>
@@ -120,9 +168,19 @@
 
         <!-- TAB 2: Appearance -->
         <div id="tab-appearance" class="tab-content" style="display:none;">
+            <?php if (isset($is_wpml_active) && $is_wpml_active && !empty($current_language)): ?>
+            <div style="background: #fff3cd; border-left: 3px solid #ffc107; padding: 10px 15px; margin-bottom: 20px;">
+                <small><span style="color: #856404;">&#127760;</span> <?php esc_html_e('Fields marked with a globe icon can be translated per language.', 'chatkit-wp'); ?></small>
+            </div>
+            <?php endif; ?>
             <table class="form-table" role="presentation">
                 <tr>
-                    <th scope="row"><label for="chatkit_button_text"><?php esc_html_e('Button Text', 'chatkit-wp'); ?></label></th>
+                    <th scope="row">
+                        <label for="chatkit_button_text">
+                            <?php esc_html_e('Button Text', 'chatkit-wp'); ?>
+                            <?php if (isset($is_wpml_active) && $is_wpml_active): ?><span title="<?php esc_attr_e('Translatable per language', 'chatkit-wp'); ?>">&#127760;</span><?php endif; ?>
+                        </label>
+                    </th>
                     <td>
                         <input type="text" id="chatkit_button_text" name="chatkit_button_text"
                                value="<?php echo esc_attr($button_text); ?>"
@@ -132,7 +190,12 @@
                 </tr>
 
                 <tr>
-                    <th scope="row"><label for="chatkit_close_text"><?php esc_html_e('Close Button Text', 'chatkit-wp'); ?></label></th>
+                    <th scope="row">
+                        <label for="chatkit_close_text">
+                            <?php esc_html_e('Close Button Text', 'chatkit-wp'); ?>
+                            <?php if (isset($is_wpml_active) && $is_wpml_active): ?><span title="<?php esc_attr_e('Translatable per language', 'chatkit-wp'); ?>">&#127760;</span><?php endif; ?>
+                        </label>
+                    </th>
                     <td>
                         <input type="text" id="chatkit_close_text" name="chatkit_close_text"
                                value="<?php echo esc_attr($close_text); ?>"
@@ -261,7 +324,13 @@
                                class="regular-text" placeholder="en-US">
                         <p class="description">
                             <?php esc_html_e('Examples:', 'chatkit-wp'); ?> <code>en-US</code>, <code>it-IT</code>, <code>de-DE</code>, <code>fr-FR</code><br>
-                            <?php esc_html_e('Leave empty to use browser default', 'chatkit-wp'); ?>
+                            <?php if (defined('ICL_SITEPRESS_VERSION')): ?>
+                                <strong><?php esc_html_e('WPML:', 'chatkit-wp'); ?></strong> <?php esc_html_e('Leave empty for automatic detection from WPML current language.', 'chatkit-wp'); ?>
+                            <?php elseif (function_exists('pll_current_language')): ?>
+                                <strong><?php esc_html_e('Polylang:', 'chatkit-wp'); ?></strong> <?php esc_html_e('Leave empty for automatic detection from Polylang current language.', 'chatkit-wp'); ?>
+                            <?php else: ?>
+                                <?php esc_html_e('Leave empty to use browser default.', 'chatkit-wp'); ?>
+                            <?php endif; ?>
                         </p>
                     </td>
                 </tr>
@@ -270,6 +339,22 @@
 
         <!-- TAB 3: Messages & Prompts -->
         <div id="tab-messages" class="tab-content" style="display:none;">
+            <?php if (isset($is_wpml_active) && $is_wpml_active && !empty($current_language)): ?>
+            <div style="background: #e7f3fe; border-left: 3px solid #2196F3; padding: 12px 15px; margin-bottom: 20px;">
+                <strong><?php esc_html_e('Per-Language Editing', 'chatkit-wp'); ?>:</strong>
+                <?php 
+                $lang_name = isset($available_languages[$current_language]) ? $available_languages[$current_language]['name'] : strtoupper($current_language);
+                printf(
+                    /* translators: %s: Current language name */
+                    esc_html__('You are editing texts for %s. Switch language in the admin bar to edit other languages.', 'chatkit-wp'),
+                    '<strong>' . esc_html($lang_name) . '</strong>'
+                );
+                ?>
+                <?php if ($current_language !== $default_language): ?>
+                <br><small><?php esc_html_e('Leave fields empty to use the default language value.', 'chatkit-wp'); ?></small>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
             <table class="form-table" role="presentation">
                 <tr>
                     <th scope="row"><label for="chatkit_greeting_text"><?php esc_html_e('Greeting Text', 'chatkit-wp'); ?></label></th>
@@ -330,6 +415,11 @@
 
         <!-- TAB 4: Advanced -->
         <div id="tab-advanced" class="tab-content" style="display:none;">
+            <?php if (isset($is_wpml_active) && $is_wpml_active && !empty($current_language)): ?>
+            <div style="background: #fff3cd; border-left: 3px solid #ffc107; padding: 10px 15px; margin-bottom: 20px;">
+                <small><span style="color: #856404;">&#127760;</span> <?php esc_html_e('Header Title and Disclaimer text can be translated per language.', 'chatkit-wp'); ?></small>
+            </div>
+            <?php endif; ?>
             <table class="form-table" role="presentation">
                 <tr>
                     <th scope="row"><?php esc_html_e('File Attachments', 'chatkit-wp'); ?></th>
@@ -398,7 +488,10 @@
                         </div>
                         
                         <div style="margin-bottom:20px;">
-                            <p><strong><?php esc_html_e('Header Title (optional):', 'chatkit-wp'); ?></strong></p>
+                            <p>
+                                <strong><?php esc_html_e('Header Title (optional):', 'chatkit-wp'); ?></strong>
+                                <?php if (isset($is_wpml_active) && $is_wpml_active): ?><span title="<?php esc_attr_e('Translatable per language', 'chatkit-wp'); ?>">&#127760;</span><?php endif; ?>
+                            </p>
                             <input type="text" name="chatkit_header_title_text"
                                    value="<?php echo esc_attr($header_title_text ?? ''); ?>"
                                    class="regular-text" placeholder="<?php esc_attr_e('Support Chat', 'chatkit-wp'); ?>">
@@ -434,7 +527,10 @@
                 </tr>
                 
                 <tr>
-                    <th scope="row"><?php esc_html_e('Disclaimer', 'chatkit-wp'); ?></th>
+                    <th scope="row">
+                        <?php esc_html_e('Disclaimer', 'chatkit-wp'); ?>
+                        <?php if (isset($is_wpml_active) && $is_wpml_active): ?><span title="<?php esc_attr_e('Translatable per language', 'chatkit-wp'); ?>">&#127760;</span><?php endif; ?>
+                    </th>
                     <td>
                         <textarea name="chatkit_disclaimer_text" rows="3" class="large-text"
                                   placeholder="<?php esc_attr_e('AI can make mistakes. Check important info.', 'chatkit-wp'); ?>"><?php echo esc_textarea($disclaimer_text ?? ''); ?></textarea>
