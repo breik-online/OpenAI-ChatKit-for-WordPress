@@ -55,7 +55,17 @@
             <li><?php esc_html_e('Register your domain at', 'chatkit-wp'); ?> <a href="https://platform.openai.com/settings/organization/chatkit" target="_blank">OpenAI ChatKit Domain Allowlist</a></li>
             <li><?php esc_html_e('Enter credentials below (including Domain Key)', 'chatkit-wp'); ?></li>
             <li><?php esc_html_e('Add shortcode', 'chatkit-wp'); ?> <code>[openai_chatkit]</code> <?php esc_html_e('OR', 'chatkit-wp'); ?> <code>[chatkit]</code> <?php esc_html_e('OR enable "Show on all pages"', 'chatkit-wp'); ?></li>
+            <li><strong><?php esc_html_e('NEW:', 'chatkit-wp'); ?></strong> <?php esc_html_e('Use', 'chatkit-wp'); ?> <code>[chatkit_embedded]</code> <?php esc_html_e('for an on-page chatbot (no close button)', 'chatkit-wp'); ?></li>
         </ol>
+        <div style="background: #e7f3fe; border-left: 4px solid #2196F3; padding: 15px; margin-top: 15px;">
+            <h4 style="margin-top: 0;">📌 <?php esc_html_e('Embedded Chatbot Options', 'chatkit-wp'); ?></h4>
+            <p><?php esc_html_e('The embedded shortcode accepts optional parameters:', 'chatkit-wp'); ?></p>
+            <ul style="margin: 0;">
+                <li><code>[chatkit_embedded]</code> - <?php esc_html_e('Default: 100% width, 600px height', 'chatkit-wp'); ?></li>
+                <li><code>[chatkit_embedded width="90%" height="500px"]</code> - <?php esc_html_e('Custom dimensions', 'chatkit-wp'); ?></li>
+            </ul>
+            <p style="margin-bottom: 0;"><em><?php esc_html_e('The embedded version displays directly on the page without minimize/close buttons.', 'chatkit-wp'); ?></em></p>
+        </div>
     </div>
 
     <form method="post" action="">
@@ -477,6 +487,20 @@
                                    <?php checked($show_history ?? true, true); ?>>
                             <?php esc_html_e('Show conversation history', 'chatkit-wp'); ?>
                         </label>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <th scope="row"><?php esc_html_e('Sources & Citations', 'chatkit-wp'); ?></th>
+                    <td>
+                        <label style="display:block;">
+                            <input type="checkbox" name="chatkit_hide_sources"
+                                   <?php checked($hide_sources ?? false, true); ?>>
+                            <?php esc_html_e('Hide sources from users', 'chatkit-wp'); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e('When enabled, sources and citations will be hidden from the chat interface.', 'chatkit-wp'); ?>
+                        </p>
                     </td>
                 </tr>
                 

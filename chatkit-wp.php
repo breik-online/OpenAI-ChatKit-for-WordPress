@@ -15,7 +15,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('CHATKIT_WP_VERSION', '1.0.3');
+define('CHATKIT_WP_VERSION', '1.0.4');
 define('CHATKIT_WP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CHATKIT_WP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -268,6 +268,8 @@ class ChatKit_WordPress {
         add_action('rest_api_init', [$this, 'register_rest_routes']);
         add_shortcode('openai_chatkit', [$this, 'render_chatkit_shortcode']);
         add_shortcode('chatkit', [$this, 'render_chatkit_shortcode']);
+        add_shortcode('chatkit_embedded', [$this, 'render_chatkit_embedded_shortcode']);
+        add_shortcode('openai_chatkit_embedded', [$this, 'render_chatkit_embedded_shortcode']);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
         add_action('wp_footer', [$this, 'maybe_auto_inject_widget'], 999);
         
@@ -483,7 +485,7 @@ class ChatKit_WordPress {
     
     public function conditional_body_attributes() {
         global $post;
-        if ($post && (has_shortcode($post->post_content, 'openai_chatkit') || has_shortcode($post->post_content, 'chatkit'))) {
+        if ($post && (has_shortcode($post->post_content, 'openai_chatkit') || has_shortcode($post->post_content, 'chatkit') || has_shortcode($post->post_content, 'chatkit_embedded') || has_shortcode($post->post_content, 'openai_chatkit_embedded'))) {
             $this->add_body_attributes_script();
         }
     }
@@ -640,6 +642,7 @@ class ChatKit_WordPress {
                 'font_size' => get_option('chatkit_font_size', '16'),
                 'show_header' => get_option('chatkit_show_header', true),
                 'show_history' => get_option('chatkit_show_history', true),
+                'hide_sources' => get_option('chatkit_hide_sources', false),
                 // Translatable header title
                 'header_title_text' => $this->get_translated_option('chatkit_header_title_text', ''),
                 'header_left_icon' => get_option('chatkit_header_left_icon', ''),
@@ -811,7 +814,8 @@ class ChatKit_WordPress {
                 'chatkit_enable_custom_font',
                 'chatkit_show_header',
                 'chatkit_show_history',
-                'chatkit_disclaimer_high_contrast'
+                'chatkit_disclaimer_high_contrast',
+                'chatkit_hide_sources'
             ];
 
             foreach ($boolean_fields as $field) {
@@ -911,6 +915,7 @@ class ChatKit_WordPress {
             'font_size' => get_option('chatkit_font_size', '16'),
             'show_header' => get_option('chatkit_show_header', true),
             'show_history' => get_option('chatkit_show_history', true),
+            'hide_sources' => get_option('chatkit_hide_sources', false),
             // Translatable header title
             'header_title_text' => $this->get_admin_option('chatkit_header_title_text', ''),
             'header_left_icon' => get_option('chatkit_header_left_icon', ''),
@@ -1121,7 +1126,7 @@ class ChatKit_WordPress {
         
         if ($show_everywhere && $this->should_show_widget()) {
             $should_load = true;
-        } elseif ($post && (has_shortcode($post->post_content, 'openai_chatkit') || has_shortcode($post->post_content, 'chatkit'))) {
+        } elseif ($post && (has_shortcode($post->post_content, 'openai_chatkit') || has_shortcode($post->post_content, 'chatkit') || has_shortcode($post->post_content, 'chatkit_embedded') || has_shortcode($post->post_content, 'openai_chatkit_embedded'))) {
             $should_load = true;
         }
         
@@ -1131,7 +1136,7 @@ class ChatKit_WordPress {
 
         wp_enqueue_script(
             'chatkit-embed',
-            CHATKIT_WP_PLUGIN_URL . 'assets/chatkit-embed.js',
+            CHATKIT_WP_PLUGIN_URL . 'assets/chatkit-embed.js?cachebust=' . time(),
             [],
             CHATKIT_WP_VERSION,
             true
@@ -1145,6 +1150,21 @@ class ChatKit_WordPress {
         );
 
         $options = $this->get_all_options();
+        
+        // Add CSS to hide sources if the option is enabled
+        if (!empty($options['hide_sources'])) {
+            $hide_sources_css = '
+                /* Hide sources and citations in ChatKit */
+                openai-chatkit::part(citations),
+                openai-chatkit::part(sources),
+                openai-chatkit::part(citation),
+                openai-chatkit [part*="citation"],
+                openai-chatkit [part*="source"] {
+                    display: none !important;
+                }
+            ';
+            wp_add_inline_style('chatkit-embed', $hide_sources_css);
+        }
         
         $prompts_config = [];
         for ($i = 1; $i <= 5; $i++) {
@@ -1223,6 +1243,35 @@ class ChatKit_WordPress {
                         role="dialog" 
                         aria-modal="false"
                         aria-label="<?php echo esc_attr__('Chat assistant', 'chatkit-wp'); ?>"></openai-chatkit>
+        <?php
+        return ob_get_clean();
+    }
+
+    public function render_chatkit_embedded_shortcode($atts) {
+        $this->widget_loaded = true;
+
+        $atts = shortcode_atts([
+            'width'     => '100%',
+            'height'    => '600px',
+        ], $atts, 'chatkit_embedded');
+
+        $width  = sanitize_text_field($atts['width']);
+        $height = sanitize_text_field($atts['height']);
+
+        static $instance_count = 0;
+        $instance_count++;
+        $element_id = 'chatkitEmbedded' . $instance_count;
+
+        ob_start();
+        ?>
+        <div class="chatkit-embedded-wrapper"
+             data-chatkit-embedded="<?php echo esc_attr($element_id); ?>"
+             style="width: <?php echo esc_attr($width); ?>; height: <?php echo esc_attr($height); ?>;">
+            <openai-chatkit id="<?php echo esc_attr($element_id); ?>"
+                            class="chatkit-embedded"
+                            role="region"
+                            aria-label="<?php echo esc_attr__('Chat assistant', 'chatkit-wp'); ?>"></openai-chatkit>
+        </div>
         <?php
         return ob_get_clean();
     }

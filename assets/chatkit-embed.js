@@ -221,11 +221,179 @@
     }, 5000);
   }
 
+  async function initEmbeddedChatKit(elementId) {
+    try {
+      if (!config.restUrl) return;
+
+      await loadChatkitScript();
+
+      if (!customElements.get('openai-chatkit')) {
+        await customElements.whenDefined('openai-chatkit');
+      }
+
+      // Small delay to ensure element is fully ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const el = document.getElementById(elementId);
+      if (!el) return;
+
+      if (typeof el.setOptions !== 'function') {
+        // Element not yet upgraded -- retry once after a delay
+        setTimeout(() => {
+          if (typeof el.setOptions === 'function') {
+            el.setOptions(buildChatkitOptions());
+          }
+        }, 1000);
+        return;
+      }
+
+      el.setOptions(buildChatkitOptions());
+
+    } catch (error) {
+      console.error('ChatKit embedded init error:', error);
+    }
+  }
+
+  function buildChatkitOptions() {
+    const options = {
+      api: {
+        getClientSecret: getClientSecret
+      },
+      theme: {
+        colorScheme: config.themeMode || 'dark',
+        radius: 'round',
+        density: 'normal',
+        color: {
+          accent: {
+            primary: config.accentColor || '#FF4500',
+            level: parseInt(config.accentLevel) || 2
+          }
+        },
+        typography: {
+          baseSize: 16,
+          fontFamily: '"OpenAI Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        }
+      },
+      composer: {
+        attachments: {
+          enabled: toBool(config.enableAttachments)
+        },
+        placeholder: config.placeholderText || 'Send a message...'
+      },
+      startScreen: {
+        greeting: config.greetingText || 'How can I help you today?',
+        prompts: buildPrompts()
+      }
+    };
+
+    // File upload configuration
+    if (toBool(config.enableAttachments)) {
+      try {
+        const maxSize = parseInt(config.attachmentMaxSize) || 20;
+        const maxCount = parseInt(config.attachmentMaxCount) || 3;
+        
+        options.composer.attachments = {
+          enabled: true,
+          maxSize: maxSize * 1024 * 1024,
+          maxCount: maxCount,
+          accept: {
+            'application/pdf': ['.pdf'],
+            'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp'],
+            'text/plain': ['.txt']
+          }
+        };
+        
+      } catch (e) {
+        console.warn('Attachments config error, using basic mode:', e);
+      }
+    }
+
+    // Initial thread ID
+    if (config.initialThreadId && config.initialThreadId.trim() !== '') {
+      options.initialThread = config.initialThreadId;
+    }
+
+    // Disclaimer
+    if (config.disclaimerText && config.disclaimerText.trim() !== '') {
+      options.disclaimer = {
+        text: config.disclaimerText,
+        highContrast: toBool(config.disclaimerHighContrast)
+      };
+    }
+
+    // Custom typography
+    if (config.customFont && config.customFont.fontFamily && config.customFont.fontFamily.trim() !== '') {
+      try {
+        options.theme.typography = {
+          fontFamily: config.customFont.fontFamily,
+          baseSize: parseInt(config.customFont.baseSize) || 16
+        };
+      } catch (e) {
+        console.warn('Typography config error, using default:', e);
+      }
+    }
+
+    // Header configuration
+    if (toBool(config.showHeader)) {
+      const headerConfig = { enabled: true };
+      
+      if (config.headerTitleText && config.headerTitleText.trim() !== '') {
+        headerConfig.title = {
+          enabled: true,
+          text: config.headerTitleText
+        };
+      }
+      
+      if (config.headerLeftIcon && config.headerLeftUrl && config.headerLeftUrl.trim() !== '') {
+        try {
+          new URL(config.headerLeftUrl);
+          headerConfig.leftAction = {
+            icon: config.headerLeftIcon,
+            onClick: () => {
+              window.location.href = config.headerLeftUrl;
+            }
+          };
+        } catch (e) {
+          // Invalid URL, skip left button
+        }
+      }
+      
+      if (config.headerRightIcon && config.headerRightUrl && config.headerRightUrl.trim() !== '') {
+        try {
+          new URL(config.headerRightUrl);
+          headerConfig.rightAction = {
+            icon: config.headerRightIcon,
+            onClick: () => {
+              window.location.href = config.headerRightUrl;
+            }
+          };
+        } catch (e) {
+          // Invalid URL, skip right button
+        }
+      }
+
+      options.header = headerConfig;
+    } else {
+      options.header = { enabled: false };
+    }
+
+    // History
+    options.history = { 
+      enabled: toBool(config.historyEnabled) 
+    };
+
+    // Locale
+    if (config.locale && config.locale.trim() !== '') {
+      options.locale = config.locale;
+    }
+
+    return options;
+  }
+
   async function initChatKit() {
     try {
       if (!config.restUrl) {
-        console.error('ChatKit configuration missing: restUrl not defined');
-        const errorMsg = config.i18n?.configError || '⚠️ Chat configuration error. Please contact support.';
+        const errorMsg = config.i18n?.configError || 'Chat configuration error. Please contact support.';
         showUserError(errorMsg);
         return;
       }
@@ -238,183 +406,17 @@
 
       const chatkitElement = document.getElementById('myChatkit');
       if (!chatkitElement) {
-        console.error('Element #myChatkit not found in DOM');
-        
         if (retryCount < MAX_RETRIES) {
           retryCount++;
-          console.log(`Retrying ChatKit initialization (${retryCount}/${MAX_RETRIES})...`);
           setTimeout(initChatKit, 1000);
-        } else {
-          const errorMsg = config.i18n?.loadFailed || '⚠️ Chat widget failed to load. Please refresh the page.';
-          showUserError(errorMsg);
         }
         return;
       }
 
       setupToggle();
 
-      console.log('📋 ChatKit Config Received:', {
-        showHeader: config.showHeader,
-        headerTitleText: config.headerTitleText,
-        historyEnabled: config.historyEnabled,
-        enableAttachments: config.enableAttachments,
-        disclaimerText: config.disclaimerText ? 'Set' : 'Not set'
-      });
-
-      // ✅ BUILD BASE OPTIONS with SAFE values
-      const options = {
-        api: {
-          getClientSecret: getClientSecret
-        },
-        theme: {
-          colorScheme: config.themeMode || 'dark',
-          // ✅ ALWAYS FIXED (CSS handles visual customization)
-          radius: 'round',
-          density: 'normal',
-          color: {
-            accent: {
-              primary: config.accentColor || '#FF4500',
-              level: parseInt(config.accentLevel) || 2
-            }
-          },
-          // ✅ ALWAYS present (will be overridden if custom)
-          typography: {
-            baseSize: 16,
-            fontFamily: '"OpenAI Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-          }
-        },
-        composer: {
-          attachments: {
-            enabled: toBool(config.enableAttachments)
-          },
-          placeholder: config.placeholderText || 'Send a message...'
-        },
-        startScreen: {
-          greeting: config.greetingText || 'How can I help you today?',
-          prompts: buildPrompts()
-        }
-      };
-
-      // ✅ FILE UPLOAD with extra params (if enabled)
-      if (toBool(config.enableAttachments)) {
-        try {
-          const maxSize = parseInt(config.attachmentMaxSize) || 20;
-          const maxCount = parseInt(config.attachmentMaxCount) || 3;
-          
-          options.composer.attachments = {
-            enabled: true,
-            maxSize: maxSize * 1024 * 1024,
-            maxCount: maxCount,
-            accept: {
-              'application/pdf': ['.pdf'],
-              'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp'],
-              'text/plain': ['.txt']
-            }
-          };
-          
-          console.log('✅ Attachments enabled with params:', { maxSize: maxSize + 'MB', maxCount });
-        } catch (e) {
-          console.warn('Attachments config error, using basic mode:', e);
-        }
-      }
-
-      // ✅ INITIAL THREAD ID
-      if (config.initialThreadId && config.initialThreadId.trim() !== '') {
-        options.initialThread = config.initialThreadId;
-        console.log('✅ Initial thread set:', config.initialThreadId);
-      }
-
-      // ✅ DISCLAIMER
-      if (config.disclaimerText && config.disclaimerText.trim() !== '') {
-        options.disclaimer = {
-          text: config.disclaimerText,
-          highContrast: toBool(config.disclaimerHighContrast)
-        };
-        console.log('✅ Disclaimer configured');
-      }
-
-      // ✅ CUSTOM TYPOGRAPHY (overrides default)
-      if (config.customFont && config.customFont.fontFamily && config.customFont.fontFamily.trim() !== '') {
-        try {
-          options.theme.typography = {
-            fontFamily: config.customFont.fontFamily,
-            baseSize: parseInt(config.customFont.baseSize) || 16
-          };
-          console.log('✅ Custom typography applied');
-        } catch (e) {
-          console.warn('Typography config error, using default:', e);
-        }
-      }
-
-      // ✅ HEADER
-      if (toBool(config.showHeader)) {
-        const headerConfig = { enabled: true };
-        
-        // Custom title
-        if (config.headerTitleText && config.headerTitleText.trim() !== '') {
-          headerConfig.title = {
-            enabled: true,
-            text: config.headerTitleText
-          };
-          console.log('✅ Header custom title:', config.headerTitleText);
-        }
-        
-        // Left action button
-        if (config.headerLeftIcon && config.headerLeftUrl && config.headerLeftUrl.trim() !== '') {
-          try {
-            new URL(config.headerLeftUrl);
-            headerConfig.leftAction = {
-              icon: config.headerLeftIcon,
-              onClick: () => {
-                window.location.href = config.headerLeftUrl;
-              }
-            };
-            console.log('✅ Header left button configured:', config.headerLeftIcon);
-          } catch (e) {
-            console.warn('⚠️ Invalid left button URL, skipping');
-          }
-        }
-        
-        // Right action button
-        if (config.headerRightIcon && config.headerRightUrl && config.headerRightUrl.trim() !== '') {
-          try {
-            new URL(config.headerRightUrl);
-            headerConfig.rightAction = {
-              icon: config.headerRightIcon,
-              onClick: () => {
-                window.location.href = config.headerRightUrl;
-              }
-            };
-            console.log('✅ Header right button configured:', config.headerRightIcon);
-          } catch (e) {
-            console.warn('⚠️ Invalid right button URL, skipping');
-          }
-        }
-
-        options.header = headerConfig;
-        console.log('✅ Header enabled');
-      } else {
-        options.header = { enabled: false };
-        console.log('✅ Header disabled');
-      }
-
-      // ✅ HISTORY
-      options.history = { 
-        enabled: toBool(config.historyEnabled) 
-      };
-      console.log('✅ History:', toBool(config.historyEnabled) ? 'enabled' : 'disabled');
-
-      // ✅ LOCALE
-      if (config.locale && config.locale.trim() !== '') {
-        options.locale = config.locale;
-        console.log('✅ Locale set to:', config.locale);
-      }
-
-      // Initialize ChatKit
-      console.log('🚀 Initializing ChatKit with final config:', options);
+      const options = buildChatkitOptions();
       chatkitElement.setOptions(options);
-
-      console.log('✅ ChatKit initialized successfully');
 
       if (typeof gtag !== 'undefined') {
         gtag('event', 'chatkit_initialized', {
@@ -424,23 +426,40 @@
       }
 
     } catch (error) {
-      console.error('❌ ChatKit Initialization Error:', error);
-      
+      console.error('ChatKit init error:', error);
+
       if (retryCount < MAX_RETRIES) {
         retryCount++;
-        console.log(`Retrying after error (${retryCount}/${MAX_RETRIES})...`);
         setTimeout(initChatKit, 2000);
       } else {
-        const errorMsg = config.i18n?.loadFailed || '⚠️ Chat initialization failed. Please refresh the page.';
+        const errorMsg = config.i18n?.loadFailed || 'Chat widget failed to load. Please refresh the page.';
         showUserError(errorMsg);
       }
     }
   }
 
+  function initAllChatKits() {
+    const hasStandardWidget = document.getElementById('myChatkit');
+    const embeddedWrappers = document.querySelectorAll('[data-chatkit-embedded]');
+
+    if (!hasStandardWidget && embeddedWrappers.length === 0) return;
+
+    if (hasStandardWidget) {
+      initChatKit();
+    }
+
+    embeddedWrappers.forEach(function(wrapper) {
+      const elementId = wrapper.getAttribute('data-chatkit-embedded');
+      if (elementId) {
+        initEmbeddedChatKit(elementId);
+      }
+    });
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initChatKit);
+    document.addEventListener('DOMContentLoaded', initAllChatKits);
   } else {
-    setTimeout(initChatKit, 0);
+    setTimeout(initAllChatKits, 0);
   }
 
   window.addEventListener('beforeunload', () => {

@@ -380,3 +380,76 @@ body[data-chatkit-shadow="bold"] #chatToggleBtn {
 body[data-chatkit-shadow="bold"] #myChatkit {
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
 }
+
+/* === EMBEDDED CHATBOT === */
+
+.chatkit-embedded-wrapper {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  background: #fff;
+  padding: 0;
+}
+
+.chatkit-embedded {
+  width: 100%;
+  height: 100%;
+  display: block !important;
+  padding: 0;
+  margin: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chatkit-embedded-wrapper {
+    background: #1a1a1a;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@media (max-width: 768px) {
+  .chatkit-embedded-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 10px 0 !important;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chatkit-embedded-wrapper {
+    height: 500px !important;
+    min-height: 400px;
+    border-radius: 10px;
+  }
+}
+
+@media print {
+  .chatkit-embedded-wrapper {
+    display: none !important;
+  }
+}
+
+@media (prefers-contrast: high) {
+  .chatkit-embedded-wrapper {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Inherit border-radius and shadow variations */
+body[data-chatkit-border-radius="square"] .chatkit-embedded-wrapper {
+  border-radius: 8px;
+}
+
+body[data-chatkit-border-radius="extra-round"] .chatkit-embedded-wrapper {
+  border-radius: 24px;
+}
+
+body[data-chatkit-shadow="subtle"] .chatkit-embedded-wrapper {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+body[data-chatkit-shadow="bold"] .chatkit-embedded-wrapper {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
