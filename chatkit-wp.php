@@ -23,6 +23,7 @@ class ChatKit_WordPress {
     private static $instance = null;
     private $options_cache = null;
     private $widget_loaded = false;
+    private $assets_enqueued = false;
 
     /**
      * WPML locale mapping - maps 2-letter codes to full locale codes
@@ -485,7 +486,7 @@ class ChatKit_WordPress {
     
     public function conditional_body_attributes() {
         global $post;
-        if ($post && (has_shortcode($post->post_content, 'openai_chatkit') || has_shortcode($post->post_content, 'chatkit') || has_shortcode($post->post_content, 'chatkit_embedded') || has_shortcode($post->post_content, 'openai_chatkit_embedded'))) {
+        if ($this->widget_loaded || ($post && (has_shortcode($post->post_content, 'openai_chatkit') || has_shortcode($post->post_content, 'chatkit') || has_shortcode($post->post_content, 'chatkit_embedded') || has_shortcode($post->post_content, 'openai_chatkit_embedded')))) {
             $this->add_body_attributes_script();
         }
     }
@@ -1134,6 +1135,23 @@ class ChatKit_WordPress {
             return;
         }
 
+        $this->do_enqueue_frontend_assets();
+    }
+
+    /**
+     * Actually enqueue the frontend CSS, JS, and localized config.
+     * Safe to call multiple times -- guarded by $assets_enqueued flag.
+     * Called early from enqueue_frontend_assets() when the shortcode is
+     * detected in post_content, and also called late from the shortcode
+     * render callbacks as a fallback (e.g. when the shortcode lives
+     * inside an ACF block and is not present in raw post_content).
+     */
+    private function do_enqueue_frontend_assets() {
+        if ($this->assets_enqueued) {
+            return;
+        }
+        $this->assets_enqueued = true;
+
         wp_enqueue_script(
             'chatkit-embed',
             CHATKIT_WP_PLUGIN_URL . 'assets/chatkit-embed.js?cachebust=' . time(),
@@ -1221,6 +1239,7 @@ class ChatKit_WordPress {
 
     public function render_chatkit_shortcode($atts) {
         $this->widget_loaded = true;
+        $this->do_enqueue_frontend_assets();
         
         $atts = shortcode_atts([
             'button_text' => $this->get_translated_option('chatkit_button_text', __('Chat now', 'chatkit-wp')),
@@ -1249,6 +1268,7 @@ class ChatKit_WordPress {
 
     public function render_chatkit_embedded_shortcode($atts) {
         $this->widget_loaded = true;
+        $this->do_enqueue_frontend_assets();
 
         $atts = shortcode_atts([
             'width'     => '100%',
