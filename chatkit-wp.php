@@ -1272,7 +1272,7 @@ class ChatKit_WordPress {
 
         $atts = shortcode_atts([
             'width'     => '100%',
-            'height'    => '600px',
+            'height'    => '460px',
         ], $atts, 'chatkit_embedded');
 
         $width  = sanitize_text_field($atts['width']);
