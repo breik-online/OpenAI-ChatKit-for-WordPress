@@ -733,8 +733,16 @@ class ChatKit_WordPress {
             check_admin_referer('chatkit_settings_save');
 
             // Non-translatable text fields (saved globally)
+            if (isset($_POST['chatkit_api_key'])) {
+                $raw_key = sanitize_text_field($_POST['chatkit_api_key']);
+                if (!empty($raw_key)) {
+                    update_option('chatkit_api_key', $this->encrypt_api_key($raw_key));
+                } else {
+                    update_option('chatkit_api_key', '');
+                }
+            }
+
             $global_text_fields = [
-                'chatkit_api_key',
                 'chatkit_workflow_id',
                 'chatkit_theme_mode',
                 'chatkit_button_size',
@@ -853,7 +861,6 @@ class ChatKit_WordPress {
 
         // Get options for admin display (respects current admin language)
         $options = $this->get_admin_options_for_display();
-        extract($options);
 
         // Pass current language info to template
         $current_language = $this->get_current_language();
@@ -870,6 +877,7 @@ class ChatKit_WordPress {
     private function get_admin_options_for_display() {
         return [
             'api_key' => $this->get_api_key(),
+            'api_key_from_constant' => $this->is_api_key_from_constant(),
             'workflow_id' => $this->get_workflow_id(),
             'accent_color' => get_option('chatkit_accent_color', '#FF4500'),
             'accent_level' => get_option('chatkit_accent_level', '2'),
@@ -935,26 +943,32 @@ class ChatKit_WordPress {
             'methods' => 'POST',
             'callback' => [$this, 'create_session'],
             'permission_callback' => function(\WP_REST_Request $request) {
-                $referer = wp_get_referer();
-                $home_url = home_url();
-                
-                if ($referer && strpos($referer, $home_url) === 0) {
-                    return true;
-                }
-                
-                if (empty($referer) && !empty($_SERVER['HTTP_HOST'])) {
-                    $current_host = parse_url($home_url, PHP_URL_HOST);
-                    $request_host = sanitize_text_field($_SERVER['HTTP_HOST']);
-                    if ($current_host === $request_host) {
-                        return true;
-                    }
-                }
-                
                 if (current_user_can('manage_options')) {
                     return true;
                 }
-                
-                return true;
+
+                $home_host = parse_url(home_url(), PHP_URL_HOST);
+
+                // Origin header is set by browsers on every POST and cannot
+                // be spoofed by cross-origin JavaScript. Works with page caching.
+                $origin = $request->get_header('Origin');
+                if ($origin) {
+                    return parse_url($origin, PHP_URL_HOST) === $home_host;
+                }
+
+                // Referer fallback (some privacy extensions strip Origin)
+                $referer = wp_get_referer();
+                if ($referer && parse_url($referer, PHP_URL_HOST) === $home_host) {
+                    return true;
+                }
+
+                // Nonce fallback for requests with both headers stripped
+                $nonce = $request->get_header('X-ChatKit-Nonce');
+                if ($nonce && wp_verify_nonce($nonce, 'chatkit_session')) {
+                    return true;
+                }
+
+                return false;
             }
         ]);
 
@@ -969,8 +983,7 @@ class ChatKit_WordPress {
 
     public function create_session(\WP_REST_Request $request) {
         $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP) ?: 'unknown';
-        $user_agent = sanitize_text_field($_SERVER['HTTP_USER_AGENT'] ?? '');
-        $fingerprint = md5($ip . $user_agent);
+        $fingerprint = md5($ip);
         
         $transient_key = 'chatkit_ratelimit_' . $fingerprint;
         $requests = get_transient($transient_key) ?: 0;
@@ -978,7 +991,9 @@ class ChatKit_WordPress {
         $limit = current_user_can('manage_options') ? 100 : 10;
 
         if ($requests >= $limit) {
-            error_log(sprintf('ChatKit rate limit exceeded for IP: %s', $ip));
+            if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
+                error_log('ChatKit: Rate limit exceeded');
+            }
             return new \WP_Error(
                 'rate_limit_exceeded',
                 __('Too many requests. Please try again in a minute.', 'chatkit-wp'),
@@ -1000,7 +1015,9 @@ class ChatKit_WordPress {
         }
 
         if (!preg_match('/^wf_[a-zA-Z0-9_-]+$/', $workflow_id)) {
-            error_log('ChatKit: Invalid workflow_id format');
+            if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
+                error_log('ChatKit: Invalid workflow_id format');
+            }
             return new \WP_Error(
                 'invalid_config',
                 __('Invalid configuration.', 'chatkit-wp'),
@@ -1029,10 +1046,6 @@ class ChatKit_WordPress {
                     'max_files' => $max_count
                 ]
             ];
-            
-            error_log(sprintf('ChatKit: File upload enabled - max_size: %dMB, max_files: %d', $max_size, $max_count));
-        } else {
-            error_log('ChatKit: File upload disabled in settings');
         }
 
         $response = wp_remote_post('https://api.openai.com/v1/chatkit/sessions', [
@@ -1047,10 +1060,12 @@ class ChatKit_WordPress {
         ]);
 
         if (is_wp_error($response)) {
-            error_log('ChatKit API Error: ' . $response->get_error_message());
+            if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
+                error_log('ChatKit API Error: ' . $response->get_error_message());
+            }
             return new \WP_Error(
                 'api_error',
-                $response->get_error_message(),
+                __('Failed to connect to API.', 'chatkit-wp'),
                 ['status' => 502]
             );
         }
@@ -1059,19 +1074,14 @@ class ChatKit_WordPress {
         $body = json_decode(wp_remote_retrieve_body($response), true);
 
         if ($status_code !== 200 || empty($body['client_secret'])) {
-            error_log('ChatKit Session Error (Status ' . $status_code . '): ' . wp_remote_retrieve_body($response));
+            if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
+                error_log('ChatKit Session Error (Status ' . $status_code . ')');
+            }
             return new \WP_Error(
                 'invalid_response',
                 __('Error creating session', 'chatkit-wp'),
                 ['status' => $status_code]
             );
-        }
-
-        // Log session configuration for debugging
-        if (!empty($body['chatkit_configuration']['file_upload']['enabled'])) {
-            error_log('ChatKit: Session created with file upload enabled ✅');
-        } else {
-            error_log('ChatKit: Session created WITHOUT file upload ❌');
         }
 
         return rest_ensure_response([
@@ -1154,7 +1164,7 @@ class ChatKit_WordPress {
 
         wp_enqueue_script(
             'chatkit-embed',
-            CHATKIT_WP_PLUGIN_URL . 'assets/chatkit-embed.js?cachebust=' . time(),
+            CHATKIT_WP_PLUGIN_URL . 'assets/chatkit-embed.js',
             [],
             CHATKIT_WP_VERSION,
             true
@@ -1201,6 +1211,7 @@ class ChatKit_WordPress {
 
         wp_localize_script('chatkit-embed', 'chatkitConfig', [
             'restUrl' => rest_url('chatkit/v1/session'),
+            'nonce' => wp_create_nonce('chatkit_session'),
             'accentColor' => $options['accent_color'],
             'accentLevel' => (int) $options['accent_level'],
             'themeMode' => $options['theme_mode'],
@@ -1296,11 +1307,49 @@ class ChatKit_WordPress {
         return ob_get_clean();
     }
 
+    private function encrypt_api_key($plain_text) {
+        if (empty($plain_text) || !function_exists('openssl_encrypt')) {
+            return $plain_text;
+        }
+        $key = substr(hash('sha256', wp_salt('auth')), 0, 32);
+        $iv = openssl_random_pseudo_bytes(16);
+        $encrypted = openssl_encrypt($plain_text, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+        if ($encrypted === false) {
+            return $plain_text;
+        }
+        return 'enc:' . base64_encode($iv . $encrypted);
+    }
+
+    private function decrypt_api_key($stored_value) {
+        if (empty($stored_value)) {
+            return '';
+        }
+        if (strpos($stored_value, 'enc:') !== 0) {
+            return $stored_value;
+        }
+        if (!function_exists('openssl_decrypt')) {
+            return '';
+        }
+        $key = substr(hash('sha256', wp_salt('auth')), 0, 32);
+        $data = base64_decode(substr($stored_value, 4), true);
+        if ($data === false || strlen($data) < 17) {
+            return '';
+        }
+        $iv = substr($data, 0, 16);
+        $encrypted = substr($data, 16);
+        $decrypted = openssl_decrypt($encrypted, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
+        return $decrypted !== false ? $decrypted : '';
+    }
+
+    private function is_api_key_from_constant() {
+        return defined('CHATKIT_OPENAI_API_KEY') && !empty(CHATKIT_OPENAI_API_KEY);
+    }
+
     private function get_api_key() {
-        if (defined('CHATKIT_OPENAI_API_KEY') && !empty(CHATKIT_OPENAI_API_KEY)) {
+        if ($this->is_api_key_from_constant()) {
             return CHATKIT_OPENAI_API_KEY;
         }
-        return get_option('chatkit_api_key', '');
+        return $this->decrypt_api_key(get_option('chatkit_api_key', ''));
     }
 
     private function get_workflow_id() {
@@ -1326,7 +1375,7 @@ class ChatKit_WordPress {
             }
         }
 
-        $user_id = 'user_' . md5(uniqid('chatkit_', true) . wp_rand());
+        $user_id = 'user_' . bin2hex(random_bytes(16));
         
         if (!headers_sent()) {
             $this->set_user_cookie($cookie_name, $user_id);

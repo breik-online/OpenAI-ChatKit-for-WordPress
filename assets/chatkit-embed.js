@@ -40,6 +40,10 @@
         'Content-Type': 'application/json'
       };
 
+      if (config.nonce) {
+        headers['X-ChatKit-Nonce'] = config.nonce;
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -82,7 +86,10 @@
         const errorDiv = document.createElement('div');
         errorDiv.style.cssText = 'padding: 20px; text-align: center; color: #721c24; background: #f8d7da; border-radius: 8px; margin: 20px;';
         errorDiv.setAttribute('role', 'alert');
-        errorDiv.innerHTML = `<p style="margin: 0; font-size: 14px;">${errorMessage}</p>`;
+        const errorP = document.createElement('p');
+        errorP.style.cssText = 'margin: 0; font-size: 14px;';
+        errorP.textContent = errorMessage;
+        errorDiv.appendChild(errorP);
         el.parentNode.insertBefore(errorDiv, el);
       }
 
@@ -209,7 +216,10 @@
     const errorDiv = document.createElement('div');
     errorDiv.style.cssText = 'position: fixed; bottom: 20px; right: 20px; padding: 15px 20px; background: #f8d7da; color: #721c24; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 9999; max-width: 300px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;';
     errorDiv.setAttribute('role', 'alert');
-    errorDiv.innerHTML = `<p style="margin: 0; font-size: 14px;">${message}</p>`;
+    const msgP = document.createElement('p');
+    msgP.style.cssText = 'margin: 0; font-size: 14px;';
+    msgP.textContent = message;
+    errorDiv.appendChild(msgP);
     document.body.appendChild(errorDiv);
 
     setTimeout(() => {
