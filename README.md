@@ -5,7 +5,7 @@
 **Requires at least:** 5.8  
 **Tested up to:** 6.5  
 **Requires PHP:** 7.4  
-**Stable tag:** 1.0.3  
+**Stable tag:** 1.1.0  
 **License:** GPL-2.0-or-later  
 **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -145,6 +145,26 @@ Choose one of two methods:
   ```
   [openai_chatkit button_text="Chat with us" accent_color="#FF6B35"]
   ```
+
+---
+
+## 🔄 Updates
+
+Sites update from this repository's [GitHub releases](https://github.com/breik-online/OpenAI-ChatKit-for-WordPress/releases)
+through the normal WordPress update screens, auto-updates included. The repository is public,
+so no credential is needed. Optionally give a site its own fine-grained GitHub token
+(*Contents: read-only* on this repository) to lift GitHub's anonymous rate limit and to keep
+updates working should the repository go private: define it as
+`define('CHATKIT_WP_GITHUB_TOKEN', 'github_pat_…');` in `wp-config.php`, or paste it under
+Settings → ChatKit → Updates. Each site carries its own, so one is revoked without touching the others.
+
+### Releasing
+
+Bump the version in `chatkit-wp.php` (header and `CHATKIT_WP_VERSION`) and the **Stable tag** in
+this README, commit, then `git tag v1.2.3 && git push origin main v1.2.3`. The Release workflow checks
+that the three versions match the tag, builds `chatkit-wp.zip` (unpacking to `chatkit-wp/`; a site
+that installed the plugin under another folder name keeps its folder) and attaches it to the release.
+Dashboard → Updates → Check again shows it right away; otherwise WordPress's twice-daily check picks it up.
 
 ---
 

@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the plugin version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          header=$(sed -n 's/^ \* Version: *//p' chatkit-wp.php | tr -d '[:space:]')
+          constant=$(sed -n "s/^define('CHATKIT_WP_VERSION', '\(.*\)');/\1/p" chatkit-wp.php)
+          stable=$(sed -n 's/^\*\*Stable tag:\*\* *//p' README.md | tr -d '[:space:]')
+          echo "tag=$tag header=$header constant=$constant stable=$stable"
+          [ "$tag" = "$header" ] && [ "$tag" = "$constant" ] && [ "$tag" = "$stable" ]
+
+      - name: Build zip
+        run: git archive --format=zip --prefix=chatkit-wp/ -o chatkit-wp.zip "$GITHUB_REF_NAME" -- . ':!screenshots' ':!.github'
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" chatkit-wp.zip --title "$GITHUB_REF_NAME" --generate-notes

@@ -595,6 +595,45 @@
             </table>
         </div>
 
+        <?php
+        $chatkit_update = ChatKit_WP_Updater::status();
+        if (null === $chatkit_update['latest']) {
+            $chatkit_update_line = sprintf(__('check failed: %s', 'chatkit-wp'), $chatkit_update['error']);
+        } elseif ($chatkit_update['available']) {
+            $chatkit_update_line = sprintf(__('%s available — install it from Plugins or Dashboard → Updates', 'chatkit-wp'), $chatkit_update['latest']);
+        } else {
+            $chatkit_update_line = sprintf(__('up to date (latest release %s)', 'chatkit-wp'), $chatkit_update['latest']);
+        }
+        ?>
+        <div class="chatkit-section">
+            <h2><?php esc_html_e('Updates', 'chatkit-wp'); ?></h2>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><?php esc_html_e('Status', 'chatkit-wp'); ?></th>
+                    <td>
+                        <?php echo esc_html(sprintf(__('Installed %s — %s.', 'chatkit-wp'), $chatkit_update['installed'], $chatkit_update_line)); ?>
+                        <?php if ($chatkit_update['auto_update']): ?><br><small><?php esc_html_e('Auto-updates are on for this plugin.', 'chatkit-wp'); ?></small><?php endif; ?>
+                        <p class="description"><?php echo wp_kses(sprintf(__('New releases come from <a href="%s" target="_blank" rel="noopener">GitHub</a> through the normal WordPress update screens, auto-updates included.', 'chatkit-wp'), 'https://github.com/' . ChatKit_WP_Updater::REPO . '/releases'), ['a' => ['href' => [], 'target' => [], 'rel' => []]]); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="chatkit_github_token"><?php esc_html_e('GitHub token', 'chatkit-wp'); ?></label></th>
+                    <td>
+                        <?php if ('constant' === $chatkit_update['token']): ?>
+                            <?php echo wp_kses(__('Set by <code>CHATKIT_WP_GITHUB_TOKEN</code> in <code>wp-config.php</code>.', 'chatkit-wp'), ['code' => []]); ?>
+                        <?php else: ?>
+                            <input type="password" autocomplete="off" id="chatkit_github_token" name="chatkit_github_token" value="" class="regular-text"
+                                   placeholder="<?php echo 'setting' === $chatkit_update['token'] ? esc_attr__('•••••••• stored — leave empty to keep', 'chatkit-wp') : 'github_pat_…'; ?>">
+                            <?php if ('setting' === $chatkit_update['token']): ?>
+                                <label style="margin-left: 1em;"><input type="checkbox" name="chatkit_github_token_clear" value="1"> <?php esc_html_e('Remove', 'chatkit-wp'); ?></label>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                        <p class="description"><?php esc_html_e('Optional: the repository is public, so updates work without one. A fine-grained personal access token for this site only (permission Contents: read-only on this repository) lifts GitHub\'s anonymous rate limit and keeps updates working should the repository go private. Revoking it stops nothing but that.', 'chatkit-wp'); ?></p>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
         <?php submit_button(__('Save Settings', 'chatkit-wp'), 'primary', 'chatkit_save_settings'); ?>
     </form>
 

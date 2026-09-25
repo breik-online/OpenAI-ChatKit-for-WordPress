@@ -3,7 +3,7 @@
  * Plugin Name: OpenAI ChatKit for WordPress
  * Plugin URI: https://github.com/francescogruner/openai-chatkit-wordpress
  * Description: Integrate OpenAI's ChatKit into your WordPress site with guided setup. Supports customizable text in any language.
- * Version: 1.0.3
+ * Version: 1.1.0
  * Author: Francesco Grüner
  * Author URI: https://francescogruner.it
  * License: GPL v2 or later
@@ -15,9 +15,12 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('CHATKIT_WP_VERSION', '1.0.4');
+define('CHATKIT_WP_VERSION', '1.1.0');
+define('CHATKIT_WP_PLUGIN_FILE', __FILE__);
 define('CHATKIT_WP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CHATKIT_WP_PLUGIN_URL', plugin_dir_url(__FILE__));
+
+require_once CHATKIT_WP_PLUGIN_DIR . 'includes/class-chatkit-updater.php';
 
 class ChatKit_WordPress {
     private static $instance = null;
@@ -267,6 +270,7 @@ class ChatKit_WordPress {
         add_action('admin_menu', [$this, 'add_admin_menu']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('rest_api_init', [$this, 'register_rest_routes']);
+        (new ChatKit_WP_Updater())->hooks();
         add_shortcode('openai_chatkit', [$this, 'render_chatkit_shortcode']);
         add_shortcode('chatkit', [$this, 'render_chatkit_shortcode']);
         add_shortcode('chatkit_embedded', [$this, 'render_chatkit_embedded_shortcode']);
@@ -570,6 +574,7 @@ class ChatKit_WordPress {
             'chatkit_disclaimer_text' => ['type' => 'string', 'default' => ''],
             'chatkit_disclaimer_high_contrast' => ['type' => 'boolean', 'default' => false],
             'chatkit_initial_thread_id' => ['type' => 'string', 'default' => ''],
+            'chatkit_github_token' => ['type' => 'string', 'default' => ''],
         ];
 
         foreach ($settings as $option => $args) {
@@ -740,6 +745,14 @@ class ChatKit_WordPress {
                 } else {
                     update_option('chatkit_api_key', '');
                 }
+            }
+
+            // The GitHub token for updates is never printed back into the form: an empty field keeps
+            // what is stored, the checkbox removes it.
+            if (!empty($_POST['chatkit_github_token_clear'])) {
+                update_option('chatkit_github_token', '');
+            } elseif (!empty($_POST['chatkit_github_token'])) {
+                update_option('chatkit_github_token', preg_replace('/[^A-Za-z0-9_]/', '', sanitize_text_field($_POST['chatkit_github_token'])));
             }
 
             $global_text_fields = [
