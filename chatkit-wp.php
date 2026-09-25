@@ -1033,6 +1033,15 @@ class ChatKit_WordPress {
             'user' => $user_id
         ];
 
+        // Where the visitor is: the site's language and locale (WPML's current language when it
+        // runs), and the page the widget sits on. The workflow reads them as state variables —
+        // declare `language`, `locale`, `site_url` and `page_url` in Agent Builder — so a tool
+        // that reads the site (the schakl WordPress MCP Bridge, `lang`) answers in the right
+        // language. A workflow that declares none of them refuses the session, so a refusal is
+        // retried once without them.
+        $state_variables = $this->session_state_variables($request);
+        $session_body['workflow']['state_variables'] = $state_variables;
+
         // Add file upload configuration if enabled
         $enable_attachments = get_option('chatkit_enable_attachments', false);
         if ($enable_attachments) {
@@ -1048,16 +1057,16 @@ class ChatKit_WordPress {
             ];
         }
 
-        $response = wp_remote_post('https://api.openai.com/v1/chatkit/sessions', [
-            'headers' => [
-                'Authorization' => 'Bearer ' . $api_key,
-                'Content-Type' => 'application/json',
-                'OpenAI-Beta' => 'chatkit_beta=v1'
-            ],
-            'body' => wp_json_encode($session_body),
-            'timeout' => 30,
-            'sslverify' => true
-        ]);
+        $response = $this->request_session($api_key, $session_body);
+
+        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 400 && !empty($state_variables)) {
+            // The workflow does not take (all of) these state variables: once more, plain.
+            if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
+                error_log('ChatKit: session refused with state variables, retrying without: ' . wp_remote_retrieve_body($response));
+            }
+            unset($session_body['workflow']['state_variables']);
+            $response = $this->request_session($api_key, $session_body);
+        }
 
         if (is_wp_error($response)) {
             if (defined('CHATKIT_DEBUG') && CHATKIT_DEBUG) {
@@ -1087,6 +1096,49 @@ class ChatKit_WordPress {
         return rest_ensure_response([
             'client_secret' => $body['client_secret']
         ]);
+    }
+
+    /**
+     * One call to the ChatKit sessions API.
+     */
+    private function request_session($api_key, array $session_body) {
+        return wp_remote_post('https://api.openai.com/v1/chatkit/sessions', [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type' => 'application/json',
+                'OpenAI-Beta' => 'chatkit_beta=v1'
+            ],
+            'body' => wp_json_encode($session_body),
+            'timeout' => 30,
+            'sslverify' => true
+        ]);
+    }
+
+    /**
+     * What the workflow should know about where the visitor is: language (WPML's current
+     * language, else the site's), locale, the site, and the page the widget was opened on
+     * (the request's referer, only when it is one of this site's own pages).
+     */
+    private function session_state_variables(\WP_REST_Request $request) {
+        $language = $this->get_current_language();
+        $locale = get_locale();
+        if (empty($language)) {
+            $language = substr($locale, 0, 2);
+        }
+        $variables = [
+            'language' => (string) $language,
+            'locale' => (string) $locale,
+            'site_url' => home_url('/'),
+        ];
+        $referer = $request->get_header('referer');
+        if ($referer) {
+            $referer = esc_url_raw($referer);
+            $host = wp_parse_url($referer, PHP_URL_HOST);
+            if ($host && strcasecmp($host, (string) wp_parse_url(home_url(), PHP_URL_HOST)) === 0) {
+                $variables['page_url'] = $referer;
+            }
+        }
+        return $variables;
     }
 
     public function test_connection() {
